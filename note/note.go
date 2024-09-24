@@ -2,7 +2,14 @@ package note
 
 import (
 	"context"
-	"encore.dev/storage/sqldb"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sync"
+
+	"encore.dev/rlog"
 )
 
 // Type that represents a note.
@@ -12,17 +19,73 @@ type Note struct {
 	CoverURL string `json:"cover_url"`
 }
 
+const notesFile = "/note/db/notes.json"
+
+var (
+	mu    sync.Mutex
+	notes = make(map[string]*Note)
+)
+
+func loadNotes() error {
+	rlog.Info("Loading notes from file")
+
+	pwd, _ := os.Getwd()
+	file, err := os.Open(filepath.Join(pwd, notesFile))
+	if err != nil {
+		if os.IsNotExist(err) {
+			error := fmt.Sprintf("file %v not found", notesFile)
+			return errors.New(error)
+		}
+		return err
+	}
+	defer file.Close()
+
+	bytes, err := os.ReadFile(filepath.Join(pwd, notesFile))
+	if err != nil {
+		fmt.Println(err.Error())
+		return err
+	}
+
+	if err := json.Unmarshal(bytes, &notes); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func saveToFile() error {
+	bytes, err := json.Marshal(notes)
+	if err != nil {
+		return err
+	}
+
+	pwd, _ := os.Getwd()
+	file, err := os.Open(filepath.Join(pwd, notesFile))
+	if err != nil {
+		if os.IsNotExist(err) {
+			error := fmt.Sprintf("file %v not found", notesFile)
+			return errors.New(error)
+		}
+		return err
+	}
+	defer file.Close()
+	if err := os.WriteFile(filepath.Join(pwd, notesFile), bytes, 0644); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 //encore:api public method=POST path=/note
 func SaveNote(ctx context.Context, note *Note) (*Note, error) {
-	// Save the note to the database.
-	// If the note already exists (i.e. CONFLICT), we update the notes text and the cover URL.
-	_, err := sqldb.Exec(ctx, `
-		INSERT INTO note (id, text, cover_url) VALUES ($1, $2, $3)
-		ON CONFLICT (id) DO UPDATE SET text=$2, cover_url=$3
-	`, note.ID, note.Text, note.CoverURL)
 
-	// If there was an error saving to the database, then we return that error.
-	if err != nil {
+	mu.Lock()
+	defer mu.Unlock()
+
+	notes[note.ID] = note
+
+	// If there was an error saving to the file, then we return that error.
+	if err := saveToFile(); err != nil {
 		return nil, err
 	}
 
@@ -32,17 +95,20 @@ func SaveNote(ctx context.Context, note *Note) (*Note, error) {
 
 //encore:api public method=GET path=/note/:id
 func GetNote(ctx context.Context, id string) (*Note, error) {
-	note := &Note{ID: id}
+	rlog.Debug("Inside GetNote()", "id", id)
 
-	// We use the note ID to query the database for the note's text and cover URL.
-	err := sqldb.QueryRow(ctx, `
-		SELECT text, cover_url FROM note
-		WHERE id = $1
-	`, id).Scan(&note.Text, &note.CoverURL)
+	mu.Lock()
+	defer mu.Unlock()
 
-	// If the note doesn't exist, we return an error.
-	if err != nil {
+	if err := loadNotes(); err != nil {
+		rlog.Error("Error", "err", err)
 		return nil, err
+	}
+
+	// We use the note ID to query the map for the note's text and cover URL.
+	note, exists := notes[id]
+	if !exists {
+		return nil, errors.New("Note not found")
 	}
 
 	// Otherwise, we return the note.
