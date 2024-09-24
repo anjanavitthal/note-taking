@@ -1,29 +1,18 @@
 # Meeting Notes Example
 
-### Tutorial article: https://dev.to/encore/setting-up-a-free-production-ready-web-app-backend-in-go-with-database-in-less-than-100-lines-4ge4
-
 This is an example application (frontend + backend) for a Markdown Meeting Notes app.
 
-Live demo: [https://encoredev.github.io/meeting-notes/](https://encoredev.github.io/meeting-notes/)
 
-![Frontend](./images/demo.gif)
-
-The backend uses an SQL database to store meeting notes and has three API endpoints: 
+The backend uses an file system to store meeting notes and has three API endpoints: 
 * `GET  /note/:id` - Retrieve a note by ID.
 * `POST /note` - Create a new note (or update an existing one).
 * `GET  /images/:query` - Search for images by using the [Pexels API](https://www.pexels.com/api/).
 
 ## Developing locally
 
-When you have [installed Encore](https://encore.dev/docs/install), you can create a new Encore application and clone this example by running this command:
-
-```bash
-encore app create my-app --example=meeting-notes
-```
-
 ## Running
 
-To run the application locally, make sure you have [Docker](https://docker.com) installed and running. This is required to run Encore applications with SQL databases.
+To run the application locally.
 
 ```bash
 # Run the backend
